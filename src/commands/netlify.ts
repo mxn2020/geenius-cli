@@ -280,14 +280,14 @@ async function bulkDeleteTestSites(netlify: NetlifyService): Promise<void> {
       return;
     }
 
-    const testSites = sites.filter(site => site.name.startsWith('test-'));
+    const testSites = sites.filter(site => site.name.toLowerCase().startsWith('test-'));
     
     if (testSites.length === 0) {
-      console.log(chalk.yellow('📭 No sites found with names starting with "test-"'));
+      console.log(chalk.yellow('📭 No sites found with names starting with "test-" (case-insensitive)'));
       return;
     }
 
-    console.log(chalk.blue(`\n🔍 Found ${testSites.length} sites with names starting with "test-":\n`));
+    console.log(chalk.blue(`\n🔍 Found ${testSites.length} sites with names starting with "test-" (case-insensitive):\n`));
     
     testSites.forEach((site, index) => {
       console.log(chalk.yellow(`${index + 1}. ${site.name}`));
@@ -303,7 +303,7 @@ async function bulkDeleteTestSites(netlify: NetlifyService): Promise<void> {
       {
         type: 'confirm',
         name: 'confirmBulkDelete',
-        message: `Are you sure you want to delete all ${testSites.length} sites starting with "test-"?`,
+        message: `Are you sure you want to delete all ${testSites.length} sites starting with "test-" (case-insensitive)?`,
         default: false
       }
     ]);

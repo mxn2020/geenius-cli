@@ -4,13 +4,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
 
-A powerful interactive CLI tool for managing Netlify, GitHub, and MongoDB Atlas resources from a single interface. Streamline your development workflow with unified management across these three essential platforms.
+A powerful interactive CLI tool for managing Netlify, GitHub, MongoDB Atlas, and Upstash resources from a single interface. Streamline your development workflow with unified management across these four essential platforms.
 
 ## Features
 
 - 🌐 **Netlify Management**: List, rename, delete, and view site details
 - 🐙 **GitHub Management**: List, rename, delete, and view repository details  
 - 🍃 **MongoDB Management**: Manage organizations, projects, and clusters with nested hierarchy
+- 🟢 **Upstash Management**: Comprehensive Redis, QStash, Vector, Workflow, and Search management
 
 ## Installation
 
@@ -43,6 +44,9 @@ geenius-cli github
 
 # Manage MongoDB organizations
 geenius-cli mongodb
+
+# Manage Upstash resources
+geenius-cli upstash
 ```
 
 ## Configuration
@@ -59,6 +63,10 @@ GITHUB_TOKEN=your_github_token
 # MongoDB Atlas
 MONGODB_ATLAS_PUBLIC_KEY=your_mongodb_public_key
 MONGODB_ATLAS_PRIVATE_KEY=your_mongodb_private_key
+
+# Upstash
+UPSTASH_EMAIL=your_upstash_email
+UPSTASH_API_KEY=your_upstash_api_key
 ```
 
 ## API Tokens
@@ -77,6 +85,12 @@ MONGODB_ATLAS_PRIVATE_KEY=your_mongodb_private_key
 1. Go to [MongoDB Atlas > Organization > Access Manager > API Keys](https://cloud.mongodb.com/v2#/org/YOUR_ORG_ID/access/apiKeys)
 2. Create a new API key with appropriate permissions
 3. Copy both the public and private keys to your `.env` file
+
+### Upstash API Keys
+1. Go to [Upstash Console](https://console.upstash.com/)
+2. Navigate to your account settings
+3. Generate API credentials (Email + API Key)
+4. Copy both the email and API key to your `.env` file
 
 ## Features by Service
 
@@ -103,6 +117,13 @@ MONGODB_ATLAS_PRIVATE_KEY=your_mongodb_private_key
 - ✅ List clusters by project
 - ✅ Delete clusters
 - ✅ View cluster details
+
+### Upstash
+- ✅ **Redis**: List, create, delete databases; view details; reset passwords
+- ✅ **QStash**: List, create, delete topics; view messages
+- ✅ **Vector**: List, create, delete indexes; view details with dimension/similarity settings
+- ✅ **Workflow**: List, delete workflows; view details
+- ✅ **Search**: List, create, delete search indexes; view details
 
 ## Development
 

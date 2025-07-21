@@ -38,14 +38,14 @@ export async function bulkDeleteTestProjects(mongodb: MongoDBService): Promise<v
         return;
       }
 
-      const testProjects = projects.filter(project => project.name.startsWith('test-'));
+      const testProjects = projects.filter(project => project.name.toLowerCase().startsWith('test-'));
       
       if (testProjects.length === 0) {
-        console.log(chalk.yellow('📭 No projects found with names starting with "test-"'));
+        console.log(chalk.yellow('📭 No projects found with names starting with "test-" (case-insensitive)'));
         return;
       }
 
-      console.log(chalk.blue(`\n🔍 Found ${testProjects.length} projects with names starting with "test-":\n`));
+      console.log(chalk.blue(`\n🔍 Found ${testProjects.length} projects with names starting with "test-" (case-insensitive):\n`));
       
       testProjects.forEach((project, index) => {
         console.log(chalk.yellow(`${index + 1}. ${project.name}`));
@@ -56,13 +56,13 @@ export async function bulkDeleteTestProjects(mongodb: MongoDBService): Promise<v
 
       console.log(chalk.red(`⚠️  DANGER: You are about to delete ${testProjects.length} projects!`));
       console.log(chalk.red(`This action cannot be undone!`));
-      console.log(chalk.red(`All clusters, databases, and data will be permanently lost!`));
+      console.log(chalk.red(`ALL clusters (regardless of name), databases, and data in these projects will be permanently lost!`));
 
       const { confirmBulkDelete } = await inquirer.prompt([
         {
           type: 'confirm',
           name: 'confirmBulkDelete',
-          message: `Are you absolutely sure you want to delete all ${testProjects.length} projects starting with "test-"?`,
+          message: `Are you absolutely sure you want to delete all ${testProjects.length} projects starting with "test-" (case-insensitive)?`,
           default: false
         }
       ]);
@@ -81,7 +81,7 @@ export async function bulkDeleteTestProjects(mongodb: MongoDBService): Promise<v
         }
       ]);
 
-      const deleteSpinner = ora(`Checking clusters in ${testProjects.length} test projects...`).start();
+      const deleteSpinner = ora(`Preparing to delete ${testProjects.length} test projects and all their clusters...`).start();
       
       try {
         let deletedProjectCount = 0;
@@ -94,29 +94,62 @@ export async function bulkDeleteTestProjects(mongodb: MongoDBService): Promise<v
             
             // First, get all clusters in this project
             const clusters = await mongodb.getClusters(project.id);
-            const testClusters = clusters.filter(cluster => cluster.name.startsWith('test-'));
             
-            // Delete all test clusters first
-            if (testClusters.length > 0) {
-              deleteSpinner.text = `Deleting ${testClusters.length} test clusters in ${project.name}...`;
+            // Delete ALL clusters in test projects (since we're deleting the entire project)
+            if (clusters.length > 0) {
+              deleteSpinner.text = `Deleting ${clusters.length} clusters in ${project.name}...`;
               
-              for (const cluster of testClusters) {
+              let clusterErrorsInProject = 0;
+              for (const cluster of clusters) {
                 try {
                   await mongodb.deleteCluster(project.id, cluster.name);
                   deletedClusterCount++;
-                  deleteSpinner.text = `Deleted ${deletedClusterCount} clusters, checking ${project.name}...`;
+                  deleteSpinner.text = `Deleted ${deletedClusterCount} clusters, processing ${project.name}...`;
                 } catch (clusterError: any) {
-                  console.log(chalk.yellow(`\nWarning: Failed to delete cluster ${cluster.name}: ${clusterError.message}`));
+                  clusterErrorsInProject++;
+                  console.log(chalk.yellow(`\nFailed to delete cluster ${cluster.name}: ${clusterError.message}`));
                 }
               }
-            }
-            
-            // Check if there are any remaining non-test clusters
-            const remainingClusters = clusters.filter(cluster => !cluster.name.startsWith('test-'));
-            
-            if (remainingClusters.length > 0) {
-              console.log(chalk.yellow(`\nSkipping project ${project.name}: contains ${remainingClusters.length} non-test clusters`));
-              continue;
+              
+              // If any cluster deletion failed, skip this project
+              if (clusterErrorsInProject > 0) {
+                console.log(chalk.yellow(`\nSkipping project ${project.name}: ${clusterErrorsInProject} clusters could not be deleted`));
+                continue;
+              }
+              
+              // Wait for cluster deletions to complete and verify
+              deleteSpinner.text = `Waiting for cluster deletions to complete in ${project.name}...`;
+              let retryCount = 0;
+              const maxRetries = 12; // 2 minutes max wait
+              
+              while (retryCount < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+                
+                try {
+                  const remainingClusters = await mongodb.getClusters(project.id);
+                  if (remainingClusters.length === 0) {
+                    break; // All clusters deleted
+                  }
+                  retryCount++;
+                  deleteSpinner.text = `Waiting for ${remainingClusters.length} clusters to finish deletion in ${project.name}... (${retryCount}/${maxRetries})`;
+                } catch (checkError: any) {
+                  // If we can't check clusters, assume they might still be there
+                  retryCount++;
+                  deleteSpinner.text = `Waiting for cluster deletion confirmation in ${project.name}... (${retryCount}/${maxRetries})`;
+                }
+              }
+              
+              // Final check - if clusters still exist after max retries, skip project
+              try {
+                const finalCheck = await mongodb.getClusters(project.id);
+                if (finalCheck.length > 0) {
+                  console.log(chalk.yellow(`\nSkipping project ${project.name}: ${finalCheck.length} clusters still active after waiting`));
+                  continue;
+                }
+              } catch (finalCheckError: any) {
+                // If we can't verify, proceed cautiously
+                console.log(chalk.yellow(`\nWarning: Could not verify cluster deletion for ${project.name}, attempting project deletion...`));
+              }
             }
             
             // Now delete the project
@@ -214,14 +247,14 @@ export async function bulkDeleteTestClusters(mongodb: MongoDBService): Promise<v
           return;
         }
 
-        const testClusters = clusters.filter(cluster => cluster.name.startsWith('test-'));
+        const testClusters = clusters.filter(cluster => cluster.name.toLowerCase().startsWith('test-'));
         
         if (testClusters.length === 0) {
-          console.log(chalk.yellow('📭 No clusters found with names starting with "test-"'));
+          console.log(chalk.yellow('📭 No clusters found with names starting with "test-" (case-insensitive)'));
           return;
         }
 
-        console.log(chalk.blue(`\n🔍 Found ${testClusters.length} clusters with names starting with "test-":\n`));
+        console.log(chalk.blue(`\n🔍 Found ${testClusters.length} clusters with names starting with "test-" (case-insensitive):\n`));
         
         testClusters.forEach((cluster, index) => {
           console.log(chalk.yellow(`${index + 1}. ${cluster.name}`));
@@ -239,7 +272,7 @@ export async function bulkDeleteTestClusters(mongodb: MongoDBService): Promise<v
           {
             type: 'confirm',
             name: 'confirmBulkDelete',
-            message: `Are you absolutely sure you want to delete all ${testClusters.length} clusters starting with "test-"?`,
+            message: `Are you absolutely sure you want to delete all ${testClusters.length} clusters starting with "test-" (case-insensitive)?`,
             default: false
           }
         ]);

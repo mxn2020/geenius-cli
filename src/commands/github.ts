@@ -322,14 +322,14 @@ async function bulkDeleteTestRepositories(github: GitHubService): Promise<void> 
       return;
     }
 
-    const testRepos = repos.filter(repo => repo.name.startsWith('test-'));
+    const testRepos = repos.filter(repo => repo.name.toLowerCase().startsWith('test-'));
     
     if (testRepos.length === 0) {
-      console.log(chalk.yellow('📭 No repositories found with names starting with "test-"'));
+      console.log(chalk.yellow('📭 No repositories found with names starting with "test-" (case-insensitive)'));
       return;
     }
 
-    console.log(chalk.blue(`\n🔍 Found ${testRepos.length} repositories with names starting with "test-":\n`));
+    console.log(chalk.blue(`\n🔍 Found ${testRepos.length} repositories with names starting with "test-" (case-insensitive):\n`));
     
     testRepos.forEach((repo, index) => {
       console.log(chalk.yellow(`${index + 1}. ${repo.name}`));
@@ -347,7 +347,7 @@ async function bulkDeleteTestRepositories(github: GitHubService): Promise<void> 
       {
         type: 'confirm',
         name: 'confirmBulkDelete',
-        message: `Are you absolutely sure you want to delete all ${testRepos.length} repositories starting with "test-"?`,
+        message: `Are you absolutely sure you want to delete all ${testRepos.length} repositories starting with "test-" (case-insensitive)?`,
         default: false
       }
     ]);

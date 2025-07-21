@@ -9,6 +9,7 @@ import chalk from 'chalk';
 import { netlifyCommand } from './commands/netlify.js';
 import { githubCommand } from './commands/github.js';
 import { mongodbCommand } from './commands/mongodb.js';
+import { upstashCommand } from './commands/upstash.js';
 
 const program = new Command();
 
@@ -32,6 +33,7 @@ async function main() {
           { name: '🌐 Netlify Projects (list, rename, delete)', value: 'netlify' },
           { name: '🐙 GitHub Repositories (list, rename, delete)', value: 'github' },
           { name: '🍃 MongoDB Organizations (list, rename, delete + nested projects/clusters)', value: 'mongodb' },
+          { name: '🟢 Upstash Resources (Redis, QStash, Vector, Workflow, Search)', value: 'upstash' },
           { name: '❌ Exit', value: 'exit' }
         ]
       }
@@ -52,6 +54,9 @@ async function main() {
       case 'mongodb':
         await mongodbCommand(main);
         break;
+      case 'upstash':
+        await upstashCommand(main);
+        break;
     }
   }
 }
@@ -71,6 +76,11 @@ program
   .command('mongodb')
   .description('Manage MongoDB organizations')
   .action(mongodbCommand);
+
+program
+  .command('upstash')
+  .description('Manage Upstash resources')
+  .action(upstashCommand);
 
 // If no specific command is provided, show the interactive menu
 if (process.argv.length === 2) {
