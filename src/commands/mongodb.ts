@@ -370,11 +370,86 @@ async function deleteProject(mongodb: MongoDBService): Promise<void> {
         }
       ]);
 
-      const deleteSpinner = ora(`Deleting project ${selectedProject.name}...`).start();
+      const deleteSpinner = ora(`Preparing to delete project ${selectedProject.name}...`).start();
       
       try {
+        // First, check for and delete all clusters in the project
+        deleteSpinner.text = `Checking clusters in ${selectedProject.name}...`;
+        const clusters = await mongodb.getClusters(selectedProject.id);
+        
+        let deletedClusterCount = 0;
+        
+        if (clusters.length > 0) {
+          deleteSpinner.text = `Deleting ${clusters.length} clusters in ${selectedProject.name}...`;
+          console.log(chalk.yellow(`\n🔄 Project has ${clusters.length} active clusters. Deleting them first...`));
+          
+          let clusterErrorsInProject = 0;
+          for (const cluster of clusters) {
+            try {
+              deleteSpinner.text = `Deleting cluster ${cluster.name}...`;
+              await mongodb.deleteCluster(selectedProject.id, cluster.name);
+              deletedClusterCount++;
+              console.log(chalk.green(`   ✅ Deleted cluster: ${cluster.name}`));
+            } catch (clusterError: any) {
+              clusterErrorsInProject++;
+              console.log(chalk.red(`   ❌ Failed to delete cluster ${cluster.name}: ${clusterError.message}`));
+            }
+          }
+          
+          // If any cluster deletion failed, abort project deletion
+          if (clusterErrorsInProject > 0) {
+            deleteSpinner.fail('Cannot delete project');
+            console.log(chalk.red(`\n❌ Cannot delete project: ${clusterErrorsInProject} clusters could not be deleted`));
+            console.log(chalk.yellow('Please manually delete the remaining clusters and try again.'));
+            return;
+          }
+          
+          // Wait for cluster deletions to complete and verify
+          deleteSpinner.text = `Waiting for cluster deletions to complete...`;
+          let retryCount = 0;
+          const maxRetries = 12; // 2 minutes max wait
+          
+          while (retryCount < maxRetries) {
+            await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10 seconds
+            
+            try {
+              const remainingClusters = await mongodb.getClusters(selectedProject.id);
+              if (remainingClusters.length === 0) {
+                console.log(chalk.green(`   ✅ All clusters successfully deleted`));
+                break; // All clusters deleted
+              }
+              retryCount++;
+              deleteSpinner.text = `Waiting for ${remainingClusters.length} clusters to finish deletion... (${retryCount}/${maxRetries})`;
+            } catch (checkError: any) {
+              // If we can't check clusters, assume they might still be there
+              retryCount++;
+              deleteSpinner.text = `Waiting for cluster deletion confirmation... (${retryCount}/${maxRetries})`;
+            }
+          }
+          
+          // Final check - if clusters still exist after max retries, abort
+          try {
+            const finalCheck = await mongodb.getClusters(selectedProject.id);
+            if (finalCheck.length > 0) {
+              deleteSpinner.fail('Cannot delete project');
+              console.log(chalk.red(`\n❌ Cannot delete project: ${finalCheck.length} clusters still active after waiting`));
+              console.log(chalk.yellow('Please try again later or manually delete the remaining clusters.'));
+              return;
+            }
+          } catch (finalCheckError: any) {
+            // If we can't verify, proceed cautiously
+            console.log(chalk.yellow(`\n⚠️  Warning: Could not verify cluster deletion, attempting project deletion...`));
+          }
+        }
+        
+        // Now delete the project
+        deleteSpinner.text = `Deleting project ${selectedProject.name}...`;
         await mongodb.deleteProject(selectedProject.id);
         deleteSpinner.succeed(chalk.green(`Project ${selectedProject.name} deleted successfully`));
+        
+        if (deletedClusterCount > 0) {
+          console.log(chalk.green(`✅ Also deleted ${deletedClusterCount} clusters`));
+        }
       } catch (error: any) {
         deleteSpinner.fail('Failed to delete project');
         console.log(chalk.red(`Error: ${error.message}`));

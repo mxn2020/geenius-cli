@@ -205,7 +205,7 @@ export async function bulkDeleteTestClusters(mongodb: MongoDBService): Promise<v
       {
         type: 'list',
         name: 'selectedOrg',
-        message: 'Select an organization:',
+        message: 'Select an organization to bulk delete test clusters from:',
         choices: organizations.map(org => ({
           name: `${org.name} (${org.id})`,
           value: org
@@ -224,47 +224,56 @@ export async function bulkDeleteTestClusters(mongodb: MongoDBService): Promise<v
         return;
       }
 
-      const { selectedProject } = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'selectedProject',
-          message: 'Select a project to bulk delete test clusters from:',
-          choices: projects.map(project => ({
-            name: `${project.name} (${project.id})`,
-            value: project
-          }))
-        }
-      ]);
+      const testProjects = projects.filter(project => project.name.toLowerCase().startsWith('test-'));
+      
+      if (testProjects.length === 0) {
+        console.log(chalk.yellow('📭 No projects found with names starting with "test-" (case-insensitive)'));
+        return;
+      }
 
-      const clustersSpinner = ora('Loading clusters...').start();
+      // Collect all test clusters from all test projects
+      const clustersSpinner = ora('Loading clusters from test projects...').start();
+      const allTestClusters: any[] = [];
+      const projectClusterMap = new Map();
       
       try {
-        const clusters = await mongodb.getClusters(selectedProject.id);
+        for (const project of testProjects) {
+          clustersSpinner.text = `Loading clusters from ${project.name}...`;
+          const clusters = await mongodb.getClusters(project.id);
+          const testClustersInProject = clusters.filter(cluster => cluster.name.toLowerCase().startsWith('test-'));
+          
+          if (testClustersInProject.length > 0) {
+            allTestClusters.push(...testClustersInProject.map(cluster => ({
+              ...cluster,
+              projectId: project.id,
+              projectName: project.name
+            })));
+            projectClusterMap.set(project.id, { project, clusters: testClustersInProject });
+          }
+        }
         clustersSpinner.stop();
         
-        if (clusters.length === 0) {
-          console.log(chalk.yellow('📭 No clusters found in this project'));
+        if (allTestClusters.length === 0) {
+          console.log(chalk.yellow('📭 No clusters found with names starting with "test-" (case-insensitive) in test projects'));
           return;
         }
 
-        const testClusters = clusters.filter(cluster => cluster.name.toLowerCase().startsWith('test-'));
+        console.log(chalk.blue(`\n🔍 Found ${allTestClusters.length} test clusters in ${testProjects.length} test projects:\n`));
         
-        if (testClusters.length === 0) {
-          console.log(chalk.yellow('📭 No clusters found with names starting with "test-" (case-insensitive)'));
-          return;
-        }
-
-        console.log(chalk.blue(`\n🔍 Found ${testClusters.length} clusters with names starting with "test-" (case-insensitive):\n`));
-        
-        testClusters.forEach((cluster, index) => {
-          console.log(chalk.yellow(`${index + 1}. ${cluster.name}`));
-          console.log(chalk.gray(`   State: ${cluster.stateName}`));
-          console.log(chalk.gray(`   Provider: ${cluster.providerSettings?.providerName || 'N/A'}`));
-          console.log(chalk.gray(`   Created: ${new Date(cluster.createDate).toLocaleDateString()}`));
+        // Group and display clusters by project
+        for (const [projectId, data] of projectClusterMap.entries()) {
+          const { project, clusters } = data;
+          console.log(chalk.cyan(`📂 Project: ${project.name}`));
+          clusters.forEach((cluster: any, index: number) => {
+            console.log(chalk.yellow(`   ${index + 1}. ${cluster.name}`));
+            console.log(chalk.gray(`      State: ${cluster.stateName}`));
+            console.log(chalk.gray(`      Provider: ${cluster.providerSettings?.providerName || 'N/A'}`));
+            console.log(chalk.gray(`      Created: ${new Date(cluster.createDate).toLocaleDateString()}`));
+          });
           console.log();
-        });
+        }
 
-        console.log(chalk.red(`⚠️  DANGER: You are about to delete ${testClusters.length} clusters!`));
+        console.log(chalk.red(`⚠️  DANGER: You are about to delete ${allTestClusters.length} test clusters from ${testProjects.length} test projects!`));
         console.log(chalk.red(`This action cannot be undone!`));
         console.log(chalk.red(`All databases and data will be permanently lost!`));
 
@@ -272,7 +281,7 @@ export async function bulkDeleteTestClusters(mongodb: MongoDBService): Promise<v
           {
             type: 'confirm',
             name: 'confirmBulkDelete',
-            message: `Are you absolutely sure you want to delete all ${testClusters.length} clusters starting with "test-" (case-insensitive)?`,
+            message: `Are you absolutely sure you want to delete all ${allTestClusters.length} test clusters from all test projects (case-insensitive)?`,
             default: false
           }
         ]);
@@ -291,27 +300,28 @@ export async function bulkDeleteTestClusters(mongodb: MongoDBService): Promise<v
           }
         ]);
 
-        const deleteSpinner = ora(`Deleting ${testClusters.length} test clusters...`).start();
+        const deleteSpinner = ora(`Deleting ${allTestClusters.length} test clusters from ${testProjects.length} projects...`).start();
         
         try {
           let deletedCount = 0;
           let errorCount = 0;
           
-          for (const cluster of testClusters) {
+          for (const cluster of allTestClusters) {
             try {
-              await mongodb.deleteCluster(selectedProject.id, cluster.name);
+              deleteSpinner.text = `Deleting ${cluster.name} from ${cluster.projectName}... (${deletedCount + 1}/${allTestClusters.length})`;
+              await mongodb.deleteCluster(cluster.projectId, cluster.name);
               deletedCount++;
-              deleteSpinner.text = `Deleted ${deletedCount}/${testClusters.length} clusters...`;
+              deleteSpinner.text = `Deleted ${deletedCount}/${allTestClusters.length} clusters...`;
             } catch (error: any) {
               errorCount++;
-              console.log(chalk.red(`\nFailed to delete ${cluster.name}: ${error.message}`));
+              console.log(chalk.red(`\nFailed to delete ${cluster.name} from ${cluster.projectName}: ${error.message}`));
             }
           }
           
           deleteSpinner.stop();
           
           if (deletedCount > 0) {
-            console.log(chalk.green(`✅ Successfully deleted ${deletedCount} test clusters`));
+            console.log(chalk.green(`✅ Successfully deleted ${deletedCount} test clusters from ${testProjects.length} test projects`));
           }
           if (errorCount > 0) {
             console.log(chalk.red(`❌ Failed to delete ${errorCount} clusters`));
